@@ -10,12 +10,14 @@
 			figure { text-align: center; }
 			img { display: inline-block; }
 			body { font-family: 'Inter', sans-serif; line-height: 1.5; }
-			table.grid { width: 100%; text-align: center; border-collapse: collapse; }
+			table.grid { width: 100%; text-align: center; border-collapse: collapse; table-layout: fixed; }
 			table.grid td { padding: 6px; vertical-align: top; }
 			table.grid img { width: 100%; }
 			table.data { border-collapse: collapse; margin: 12px auto; }
 			table.data td, table.data th { border: 1px solid #ccc; padding: 4px 10px; text-align: center; }
 			figcaption { font-size: 0.9em; color: #444; }
+			table.data { font-size: 0.85em; }
+			@media print { .container { padding: 0 4%; } tr, figure { break-inside: avoid; } }
 		</style>
 	</head>
 	<body>
@@ -39,7 +41,7 @@
 
 		<h2>Part 1: Ray Generation and Scene Intersection</h2>
 		<p><b>Ray generation.</b> For each pixel, <code>raytrace_pixel</code> takes <code>ns_aa</code> random points inside the pixel (the pixel's corner plus a uniform offset in [0,1]&sup2;) and normalizes them by the image width and height. <code>Camera::generate_ray</code> maps each normalized point \((x, y)\) to the virtual sensor at \(z=-1\) in camera space:
-		\[ \left((2x-1)\tan\tfrac{hFov}{2},\ (2y-1)\tan\tfrac{vFov}{2},\ -1\right), \]
+		\[ \left((2x-1)\tan\frac{hFov}{2},\ (2y-1)\tan\frac{vFov}{2},\ -1\right), \]
 		converting the FOV from degrees to radians. The direction is rotated into world space by <code>c2w</code> and normalized, the origin is the camera position, and <code>min_t</code>/<code>max_t</code> are set to the near and far clipping planes. The pixel's value is the average radiance of its samples.</p>
 
 		<p><b>Primitive intersection.</b> Each ray carries a valid interval \([t_{min}, t_{max}]\). A primitive reports a hit only if its \(t\) lies inside that interval, and when it does, it shrinks \(t_{max}\) to \(t\). Later tests then automatically ignore anything farther away, so whatever is left at the end is the closest hit. On a hit we record \(t\), the surface normal, the primitive and its BSDF in the <code>Intersection</code>.</p>
