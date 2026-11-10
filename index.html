@@ -1,105 +1,259 @@
 <html>
 	<head>
+		<meta charset="utf-8">
+		<title>CS184 Homework 3 Write-Up</title>
 		<script src='https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js?config=default'></script>
 		<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
 		<style>
-			h1 {
-				text-align: center;
-			}
-
-			.container {
-				margin: 0 auto;
-				padding: 60px 20%;
-			}
-
-			figure {
-				text-align: center;
-			}
-
-			img {
-				display: inline-block;
-			}
-
-			body {
-				font-family: 'Inter', sans-serif;
-			}
+			h1 { text-align: center; }
+			.container { margin: 0 auto; padding: 60px 20%; }
+			figure { text-align: center; }
+			img { display: inline-block; }
+			body { font-family: 'Inter', sans-serif; line-height: 1.5; }
+			table.grid { width: 100%; text-align: center; border-collapse: collapse; }
+			table.grid td { padding: 6px; vertical-align: top; }
+			table.grid img { width: 100%; }
+			table.data { border-collapse: collapse; margin: 12px auto; }
+			table.data td, table.data th { border: 1px solid #ccc; padding: 4px 10px; text-align: center; }
+			figcaption { font-size: 0.9em; color: #444; }
 		</style>
 	</head>
 	<body>
 		<div class="container">
 		<h1>CS184/284A Fall 2026 Homework 3 Write-Up</h1>
-		<div style="text-align: center;">Names: </div>
+		<div style="text-align: center;">Names: Om Gole, Naima Hammad</div>
 
 		<br>
 
-		Link to webpage: (TODO) <a href="https://cs184.eecs.berkeley.edu/fa26">cs184.eecs.berkeley.edu/fa26</a>
-		Link to GitHub repository: (TODO) <a href="https://cs184.eecs.berkeley.edu/fa26">cs184.eecs.berkeley.edu/fa26</a>
-		
+		Link to webpage: <a href="https://cal-cs184-student.github.io/hw3-og-nh-writeup/">cal-cs184-student.github.io/hw3-og-nh-writeup</a><br>
+		Link to GitHub repository: <a href="https://github.com/cal-cs184-student/hw3-og-nh">github.com/cal-cs184-student/hw3-og-nh</a>
+
 		<figure>
-			<img src="assets/cornell.png" alt="Cornell Boxes with Bunnies" style="width:70%"/>
-			<figcaption>You can add images with captions!</figcaption>
+			<img src="assets/part4/bunny_rr_m100.png" alt="CBbunny with global illumination" style="width:70%"/>
+			<figcaption>CBbunny.dae with full global illumination (1024 samples per pixel, Russian roulette, max depth 100).</figcaption>
 		</figure>
 
-		<!--
-		We've already added one heading per part, to make your write-up as navigable when grading. Please fit your write-up within these sections!
-		-->
-
 		<h2>Overview</h2>
-		Give a high-level overview of what you implemented in this homework. Think about what you've built as a whole. Share your thoughts on what interesting things you've learned from completing the homework.
+		<p>We built a physically based path tracer from the ground up. Camera rays are generated through each pixel and intersected with triangles and spheres. A bounding volume hierarchy (BVH) cuts the cost of each intersection from linear to roughly logarithmic in the number of primitives. Surfaces are shaded with a Lambertian BSDF, using Monte Carlo estimates of the reflection equation: first for direct lighting (uniform hemisphere sampling and importance sampling of lights), then for full global illumination with recursive bounces terminated by Russian roulette. Finally, adaptive sampling stops tracing rays through a pixel once its value has statistically converged.</p>
+		<p>The biggest lesson was how much rendering is a statistics problem. Every image is an estimate of an integral, and most of the work is about lowering its variance: sampling the lights instead of the hemisphere, adding samples where the image is noisy, and keeping the estimator unbiased when paths are cut short. We also learned to be careful with C++ undefined behavior: a function in our bounce code was missing its <code>return</code>, which rendered correctly with GCC but gave dark, speckled images with MSVC on Windows (see Part 4).</p>
 
 		<h2>Part 1: Ray Generation and Scene Intersection</h2>
-		Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+		<p><b>Ray generation.</b> For each pixel, <code>raytrace_pixel</code> takes <code>ns_aa</code> random points inside the pixel (the pixel's corner plus a uniform offset in [0,1]&sup2;) and normalizes them by the image width and height. <code>Camera::generate_ray</code> maps each normalized point \((x, y)\) to the virtual sensor at \(z=-1\) in camera space:
+		\[ \left((2x-1)\tan\tfrac{hFov}{2},\ (2y-1)\tan\tfrac{vFov}{2},\ -1\right), \]
+		converting the FOV from degrees to radians. The direction is rotated into world space by <code>c2w</code> and normalized, the origin is the camera position, and <code>min_t</code>/<code>max_t</code> are set to the near and far clipping planes. The pixel's value is the average radiance of its samples.</p>
 
-		<p>Here is an example 2x2 gridlike structure using an HTML table. Each <b>tr</b> is a row and each <b>td</b> is a column in that row. You might find this useful for framing and showing your result images in an organized fashion.</p>
-		<div style="display: flex; flex-direction: column; align-items: center;">
-			<table style="width: 100%; text-align: center; border-collapse: collapse;">
-			  <tr>
-				<td style="text-align: center;">
-				  <img src="assets/cornell.png" width="400px"/>
-				  <figcaption>Caption goes here.</figcaption>
-				</td>
-				<td style="text-align: center;">
-				  <img src="assets/cornell.png" width="400px"/>
-				  <figcaption>Caption goes here.</figcaption>
-				</td>
-			  </tr>
-			  <tr>
-				<td style="text-align: center;">
-				  <img src="assets/cornell.png" width="400px"/>
-				  <figcaption>Caption goes here.</figcaption>
-				</td>
-				<td style="text-align: center;">
-				  <img src="assets/cornell.png" width="400px"/>
-				  <figcaption>Caption goes here.</figcaption>
-				</td>
-			  </tr>
-			</table>
-		</div>
-		
+		<p><b>Primitive intersection.</b> Each ray carries a valid interval \([t_{min}, t_{max}]\). A primitive reports a hit only if its \(t\) lies inside that interval, and when it does, it shrinks \(t_{max}\) to \(t\). Later tests then automatically ignore anything farther away, so whatever is left at the end is the closest hit. On a hit we record \(t\), the surface normal, the primitive and its BSDF in the <code>Intersection</code>.</p>
+
+		<p><b>Triangle intersection (M&ouml;ller&ndash;Trumbore).</b> A point on the ray, \(\mathbf{o} + t\mathbf{d}\), must equal a point on the triangle written in barycentric coordinates, \((1-b_1-b_2)\mathbf{p}_1 + b_1\mathbf{p}_2 + b_2\mathbf{p}_3\). Rearranging gives a 3&times;3 linear system in \((t, b_1, b_2)\), which Cramer's rule solves with cross and dot products. With \(\mathbf{e}_1 = \mathbf{p}_2-\mathbf{p}_1\), \(\mathbf{e}_2 = \mathbf{p}_3-\mathbf{p}_1\), \(\mathbf{s} = \mathbf{o}-\mathbf{p}_1\), \(\mathbf{s}_1 = \mathbf{d}\times\mathbf{e}_2\), \(\mathbf{s}_2 = \mathbf{s}\times\mathbf{e}_1\):
+		\[ \begin{bmatrix} t \\ b_1 \\ b_2 \end{bmatrix} = \frac{1}{\mathbf{s}_1\cdot\mathbf{e}_1}\begin{bmatrix} \mathbf{s}_2\cdot\mathbf{e}_2 \\ \mathbf{s}_1\cdot\mathbf{s} \\ \mathbf{s}_2\cdot\mathbf{d} \end{bmatrix}. \]
+		The ray hits the triangle when \(b_1, b_2 \ge 0\), \(b_1 + b_2 \le 1\) (the point is inside the triangle) and \(t\) is in the valid interval. A near-zero determinant means the ray is parallel to the triangle. The shading normal is the vertex normals interpolated with the same barycentric weights. Spheres are handled analytically: substituting the ray into \(|\mathbf{p}-\mathbf{c}|^2 = R^2\) gives a quadratic in \(t\). We take the nearest root inside the valid interval, and the normal is \((\mathbf{p}-\mathbf{c})/R\).</p>
+
+		<table class="grid">
+			<tr>
+				<td><img src="assets/part1/CBempty.png"/><figcaption>CBempty.dae</figcaption></td>
+				<td><img src="assets/part1/CBspheres.png"/><figcaption>CBspheres_lambertian.dae</figcaption></td>
+				<td><img src="assets/part1/banana.png"/><figcaption>banana.dae</figcaption></td>
+			</tr>
+		</table>
+
 		<h2>Part 2: Bounding Volume Hierarchy</h2>
-		Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+		<p><b>Construction.</b> <code>construct_bvh</code> is recursive. It computes the bounding box of the current primitives (the node's box) and the bounding box of their centroids. If there are at most <code>max_leaf_size</code> primitives, the node becomes a leaf whose <code>start</code>/<code>end</code> iterators span that range. Otherwise we split.</p>
+		<p><b>Split heuristic.</b> We split along the axis where the <i>centroids</i> are most spread out (the longest axis of the centroid box), at the <b>average centroid</b> position along that axis. <code>std::partition</code> reorders the primitives in place so the left group comes first, and we recurse on each half. The average follows where the geometry actually is, so it keeps the tree balanced better than the spatial midpoint when triangles are clustered. If every primitive lands on one side (for example, they all share a centroid), the child would get the same list and recurse forever, so in that case we split the range in half by count instead.</p>
+		<p><b>Traversal.</b> <code>BBox::intersect</code> uses the slab method. For each axis it computes where the ray enters and leaves the pair of planes, and the box interval is from the latest entry to the earliest exit, clipped to the ray's \([t_{min}, t_{max}]\). If a ray misses a node's box, the whole subtree is skipped. At a leaf we test each primitive. <code>has_intersection</code> returns at the first hit, but <code>intersect</code> must visit both children, because boxes can overlap and the closest hit may be in either one. The BVH never compares distances itself: each primitive's <code>intersect</code> shrinks <code>max_t</code>, so farther boxes and primitives get rejected on their own.</p>
+
+		<table class="grid">
+			<tr>
+				<td><img src="assets/part2/cow.png"/><figcaption>cow.dae (5,856 triangles)</figcaption></td>
+				<td><img src="assets/part2/teapot.png"/><figcaption>teapot.dae (2,464)</figcaption></td>
+				<td><img src="assets/part2/beetle.png"/><figcaption>beetle.dae (7,558)</figcaption></td>
+			</tr>
+			<tr>
+				<td><img src="assets/part2/maxplanck.png"/><figcaption>maxplanck.dae (tens of thousands)</figcaption></td>
+				<td><img src="assets/part2/CBlucy.png"/><figcaption>CBlucy.dae (hundreds of thousands)</figcaption></td>
+				<td></td>
+			</tr>
+		</table>
+
+		<p><b>Timing comparison</b> (800&times;600, 1 sample per pixel, 8 threads):</p>
+		<table class="data">
+			<tr><th>Scene</th><th>Triangles</th><th>No BVH</th><th>BVH</th><th>Speedup</th><th>Tests/ray (no BVH)</th><th>Tests/ray (BVH)</th></tr>
+			<tr><td>teapot</td><td>2,464</td><td>7.66 s</td><td>0.057 s</td><td>~134&times;</td><td>227.6</td><td>1.23</td></tr>
+			<tr><td>cow</td><td>5,856</td><td>16.05 s</td><td>0.099 s</td><td>~163&times;</td><td>463.9</td><td>1.98</td></tr>
+			<tr><td>beetle</td><td>7,558</td><td>12.43 s</td><td>0.052 s</td><td>~239&times;</td><td>324.2</td><td>0.99</td></tr>
+		</table>
+		<p>Without the BVH, every ray that reaches the scene's bounding box is tested against every primitive, so render time grows linearly with triangle count. The BVH made these scenes 134&ndash;239&times; faster. The intersection tests per ray show why: they dropped from hundreds to about one or two, because rays skip every subtree whose box they miss and only reach the few leaves near their actual hit. The speedup grows with scene complexity, and building the tree takes only about 5 ms, which is negligible. That is what makes meshes with hundreds of thousands of triangles, like Lucy, render in seconds. (The no-BVH tests per ray are below the triangle count because rays that miss the root box, which hit the black background, test nothing.)</p>
 
 		<h2>Part 3: Direct Illumination</h2>
-		Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+		<p>The diffuse BSDF returns \(f = \rho/\pi\) (albedo over \(\pi\), so it never reflects more energy than it receives). Zero-bounce radiance is the emission of whatever the camera ray hits. Both direct lighting methods estimate the reflection equation with Monte Carlo:
+		\[ L_o(\mathbf{p}, \omega_o) \approx \frac{1}{N}\sum_{j=1}^{N} \frac{f(\omega_j \to \omega_o)\, L_i(\mathbf{p}, \omega_j)\, \cos\theta_j}{p(\omega_j)}. \]
+		We work in a local frame at the hit point where the normal is \(+z\), so \(\cos\theta_j\) is just the \(z\) component of \(\omega_j\). Rays are converted to world space before being traced, and every new ray starts at <code>min_t = EPS_F</code> so it doesn't re-hit the surface it leaves.</p>
+		<p><b>Uniform hemisphere sampling.</b> We draw \(N\) directions uniformly on the hemisphere, so \(p(\omega) = 1/2\pi\). For each one we trace a ray. If it hits an emitter, that emission is \(L_i\); anything else contributes zero.</p>
+		<p><b>Importance sampling the lights.</b> For each light we ask <code>sample_L</code> for a direction toward a point on the light, along with its radiance, distance and pdf. We skip the sample if the light is behind the surface (\(\cos\theta \le 0\)). Otherwise we cast a <b>shadow ray</b> with <code>max_t = dist &minus; EPS_F</code>, and if anything blocks it, the point is in shadow from that light. Unblocked samples go into the same estimator. Point lights are sampled once, since every sample would be identical.</p>
+
+		<table class="grid">
+			<tr>
+				<td><img src="assets/part3/CBbunny_H_64_32.png"/><figcaption>Uniform hemisphere sampling (CBbunny, 64 spp, 32 light rays)</figcaption></td>
+				<td><img src="assets/part3/bunny_64_32.png"/><figcaption>Light sampling (CBbunny, 64 spp, 32 light rays)</figcaption></td>
+			</tr>
+			<tr>
+				<td><img src="assets/part3/CBspheres_H_64_32.png"/><figcaption>Uniform hemisphere sampling (CBspheres)</figcaption></td>
+				<td><img src="assets/part3/CBspheres_64_32.png"/><figcaption>Light sampling (CBspheres)</figcaption></td>
+			</tr>
+			<tr>
+				<td><img src="assets/part3/dragon_64_32.png"/><figcaption>dragon.dae: lit by a point light, so only light sampling can render it</figcaption></td>
+				<td></td>
+			</tr>
+		</table>
+
+		<p><b>Soft-shadow noise vs. light rays</b> (CBbunny, 1 sample per pixel, light sampling):</p>
+		<table class="grid">
+			<tr>
+				<td><img src="assets/part3/bunny_l1.png"/><figcaption>-l 1</figcaption></td>
+				<td><img src="assets/part3/bunny_l4.png"/><figcaption>-l 4</figcaption></td>
+			</tr>
+			<tr>
+				<td><img src="assets/part3/bunny_l16.png"/><figcaption>-l 16</figcaption></td>
+				<td><img src="assets/part3/bunny_l64.png"/><figcaption>-l 64</figcaption></td>
+			</tr>
+		</table>
+		<p>With 1 light ray, each pixel's shadow test is a single yes/no, so the soft shadow under the bunny is a field of black and lit speckles. At 4 and 16 rays each pixel averages more shadow tests and the speckle turns into fine grain, and at 64 the penumbra is a smooth gradient. Noise falls roughly as \(1/\sqrt{N}\), so each 4&times; increase in light rays halves it, while render time grows linearly (0.05 s, 0.10 s, 0.36 s, 1.14 s).</p>
+
+		<p><b>Hemisphere vs. light sampling.</b> With identical settings, uniform hemisphere sampling gives visibly grainy images, while light sampling gives clean ones, and it was also faster (38.1 s vs. 65.2 s on CBbunny, 30.5 s vs. 43.3 s on CBspheres). Hemisphere sampling picks directions blindly, so most samples miss the small area light and contribute nothing, while the few that hit it carry a large weight, which means high variance. Light sampling aims every sample at the light and only has to check visibility, so nearly every sample is useful. Hemisphere sampling also cannot render point lights at all: a random direction has zero probability of hitting a single point.</p>
 
 		<h2>Part 4: Global Illumination</h2>
-		Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+		<p><b>Sampling the BSDF.</b> <code>DiffuseBSDF::sample_f</code> draws a cosine-weighted direction (\(p(\omega) = \cos\theta/\pi\)), sets the pdf and returns \(f\).</p>
+		<p><b>Indirect lighting.</b> Each camera ray starts with <code>depth = max_ray_depth</code>, the number of bounces it may still take. <code>est_radiance_global_illumination</code> adds the zero-bounce emission, then calls <code>at_least_one_bounce_radiance</code>, which at each hit point:</p>
+		<ol>
+			<li>adds the direct lighting at that point (<code>one_bounce_radiance</code>);</li>
+			<li>if bounces remain, samples one incoming direction from the BSDF and traces a ray along it with <code>depth &minus; 1</code>;</li>
+			<li>if that ray hits a surface, recurses to get the radiance leaving that surface toward us, and adds \(f\,L_i\cos\theta / p(\omega)\), divided by the continuation probability.</li>
+		</ol>
+		<p>Emission is only added at the camera's first hit; at later hits, light from emitters is counted by the direct-lighting term, so nothing is double counted. With <code>isAccumBounces = false</code>, each level adds its direct lighting only when it is the last bounce (<code>depth == 1</code>), and the zero-bounce term only when <code>m = 0</code>, so the image shows exactly the \(m\)-th bounce.</p>
+		<p><b>Russian roulette.</b> The first indirect bounce is always taken. After that, a path continues with probability 0.65 and surviving paths are divided by 0.65, which keeps the estimator unbiased while letting long paths die off. That keeps <code>-m 100</code> cheap.</p>
+		<p><b>Bug we hit.</b> Our first version left out the final <code>return L_out;</code> in <code>at_least_one_bounce_radiance</code>. That is undefined behavior in C++. GCC happened to return the right value, but MSVC returned garbage, so on Windows any render with 2+ bounces came out darker than direct lighting alone, which is impossible. We found it by rebuilding on Linux, where an unoptimized build hit a trap instruction at the end of the function.</p>
+
+		<p><b>Global illumination</b> (1024 samples per pixel):</p>
+		<table class="grid">
+			<tr>
+				<td><img src="assets/part4/spheres_spp1024.png"/><figcaption>CBspheres, 1024 spp, 4 light rays, m=5</figcaption></td>
+				<td><img src="assets/part4/bunny_accum_m5.png"/><figcaption>CBbunny, 1024 spp, m=5</figcaption></td>
+			</tr>
+			<tr>
+				<td><img src="assets/part4/dragon_gi.png"/><figcaption>dragon.dae, 1024 spp, m=5</figcaption></td>
+				<td></td>
+			</tr>
+		</table>
+
+		<p><b>Direct only vs. indirect only</b> (CBspheres, 1024 spp):</p>
+		<table class="grid">
+			<tr>
+				<td><img src="assets/part4/spheres_direct_only.png"/><figcaption>Direct illumination only</figcaption></td>
+				<td><img src="assets/part4/spheres_indirect_only.png"/><figcaption>Indirect illumination only</figcaption></td>
+			</tr>
+		</table>
+		<p>Direct lighting alone leaves the ceiling and the shadows completely black and gives hard contrast. Indirect lighting alone has a black light source (it is never seen directly) but softly fills every surface, including the ceiling and the shadows, with red and blue bleeding off the walls onto the floor and spheres. Adding the two reproduces the full render (we checked numerically: on the left wall, direct + indirect = 0.238 vs. 0.239 for the full render). The indirect-only view was generated by skipping the zero-bounce term and the first bounce's direct lighting, enabled with an environment variable so no code edits were needed between renders.</p>
+
+		<p><b>Only the m-th bounce</b> (CBbunny, isAccumBounces = false, 1024 spp):</p>
+		<table class="grid">
+			<tr>
+				<td><img src="assets/part4/bunny_only_m0.png"/><figcaption>m = 0</figcaption></td>
+				<td><img src="assets/part4/bunny_only_m1.png"/><figcaption>m = 1</figcaption></td>
+				<td><img src="assets/part4/bunny_only_m2.png"/><figcaption>m = 2</figcaption></td>
+			</tr>
+			<tr>
+				<td><img src="assets/part4/bunny_only_m3.png"/><figcaption>m = 3</figcaption></td>
+				<td><img src="assets/part4/bunny_only_m4.png"/><figcaption>m = 4</figcaption></td>
+				<td><img src="assets/part4/bunny_only_m5.png"/><figcaption>m = 5</figcaption></td>
+			</tr>
+		</table>
+		<p>The <b>2nd bounce</b> is light that hit one surface before reaching the one we see. It lights everything direct lighting can't reach: the ceiling (which faces away from the light), the underside of the bunny and the inside of its shadow. It also carries color, so the red and blue walls tint the floor, back wall and bunny. The <b>3rd bounce</b> is dimmer, since each diffuse bounce absorbs energy, and flatter, since the light has scattered twice. It mostly evens out the lighting and spreads the color bleeding further. A rasterizer computes only direct lighting and usually approximates the rest with a constant "ambient" term, so it misses all of this. These bounces are what give the path-traced image filled-in shadows, color bleeding and lit surfaces that face away from the light.</p>
+
+		<p><b>Accumulated bounces</b> (CBbunny, isAccumBounces = true, 1024 spp):</p>
+		<table class="grid">
+			<tr>
+				<td><img src="assets/part4/bunny_accum_m0.png"/><figcaption>m = 0</figcaption></td>
+				<td><img src="assets/part4/bunny_accum_m1.png"/><figcaption>m = 1</figcaption></td>
+				<td><img src="assets/part4/bunny_accum_m2.png"/><figcaption>m = 2</figcaption></td>
+			</tr>
+			<tr>
+				<td><img src="assets/part4/bunny_accum_m3.png"/><figcaption>m = 3</figcaption></td>
+				<td><img src="assets/part4/bunny_accum_m4.png"/><figcaption>m = 4</figcaption></td>
+				<td><img src="assets/part4/bunny_accum_m5.png"/><figcaption>m = 5</figcaption></td>
+			</tr>
+		</table>
+		<p>Compared with the unaccumulated renders, each accumulated image is the sum of all bounces up to m, so the scene gets steadily brighter and fuller: m = 1 is plain direct lighting with black shadows and ceiling, m = 2 adds most of the fill light, and from m = 3 on the changes become small because each extra bounce carries less energy. We verified the sums: e.g. on the back wall at m = 3, the accumulated value is 0.356 and the sum of bounces 0 through 3 is 0.355.</p>
+
+		<p><b>Russian roulette</b> (CBbunny, 1024 spp). Russian roulette is always enabled in our implementation, so the m = 0&ndash;4 renders above are also the Russian roulette renders; here they are with m = 100:</p>
+		<table class="grid">
+			<tr>
+				<td><img src="assets/part4/bunny_accum_m0.png"/><figcaption>m = 0</figcaption></td>
+				<td><img src="assets/part4/bunny_accum_m1.png"/><figcaption>m = 1</figcaption></td>
+				<td><img src="assets/part4/bunny_accum_m2.png"/><figcaption>m = 2</figcaption></td>
+			</tr>
+			<tr>
+				<td><img src="assets/part4/bunny_accum_m3.png"/><figcaption>m = 3</figcaption></td>
+				<td><img src="assets/part4/bunny_accum_m4.png"/><figcaption>m = 4</figcaption></td>
+				<td><img src="assets/part4/bunny_rr_m100.png"/><figcaption>m = 100</figcaption></td>
+			</tr>
+		</table>
+		<p>The m = 100 render is within 1&ndash;2% of m = 5 and only slightly brighter (it adds the small contribution of bounces 6 and beyond), yet it took about as long, because roulette ends most paths after a few bounces.</p>
+
+		<p><b>Samples per pixel</b> (CBspheres, 4 light rays, m = 5):</p>
+		<table class="grid">
+			<tr>
+				<td><img src="assets/part4/spheres_spp1.png"/><figcaption>1 spp</figcaption></td>
+				<td><img src="assets/part4/spheres_spp2.png"/><figcaption>2 spp</figcaption></td>
+				<td><img src="assets/part4/spheres_spp4.png"/><figcaption>4 spp</figcaption></td>
+				<td><img src="assets/part4/spheres_spp8.png"/><figcaption>8 spp</figcaption></td>
+			</tr>
+			<tr>
+				<td><img src="assets/part4/spheres_spp16.png"/><figcaption>16 spp</figcaption></td>
+				<td><img src="assets/part4/spheres_spp64.png"/><figcaption>64 spp</figcaption></td>
+				<td><img src="assets/part4/spheres_spp1024.png"/><figcaption>1024 spp</figcaption></td>
+				<td></td>
+			</tr>
+		</table>
+		<p>At 1&ndash;4 spp the image is dominated by noise, especially in regions lit only indirectly (the ceiling and shadows), because each pixel averages just a few random light paths. Noise shrinks as \(1/\sqrt{N}\): by 16&ndash;64 spp the structure is clear but grainy, and at 1024 spp the soft shadows and color bleeding are smooth.</p>
 
 		<h2>Part 5: Adaptive Sampling</h2>
-		Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+		<p><b>Idea.</b> Pixels converge at different rates. A flat, directly lit wall settles after a few dozen samples, while a pixel in a soft shadow or lit mostly by bounced light keeps fluctuating. Adaptive sampling stops each pixel once we are statistically confident about its value, and spends the saved samples on the hard pixels.</p>
+		<p><b>Implementation.</b> In <code>raytrace_pixel</code>, for each sample we add its radiance to the pixel total and keep two running sums of its illuminance \(x_k\): \(s_1 = \sum x_k\) and \(s_2 = \sum x_k^2\). Every <code>samplesPerBatch</code> samples we compute
+		\[ \mu = \frac{s_1}{n}, \qquad \sigma^2 = \frac{1}{n-1}\left(s_2 - \frac{s_1^2}{n}\right), \qquad I = 1.96\,\frac{\sigma}{\sqrt{n}}, \]
+		and stop if \(I \le \text{maxTolerance}\cdot\mu\). That is, with 95% confidence the pixel's true mean lies within 5% of our estimate. Otherwise we keep going up to the <code>-s</code> maximum. The pixel is set to the average of the samples actually taken, and that count is written to <code>sampleCountBuffer</code> for the rate image. We only test once per batch to avoid recomputing statistics after every sample.</p>
+
+		<p>Settings: max 2048 spp, <code>-a 64 0.05</code>, 1 light ray, max depth 5, 480&times;360. In the rate images, red means many samples and blue means few.</p>
+		<table class="grid">
+			<tr>
+				<td><img src="assets/part5/bunny_adaptive.png"/><figcaption>CBbunny, rendered</figcaption></td>
+				<td><img src="assets/part5/bunny_adaptive_rate.png"/><figcaption>CBbunny, sample rate</figcaption></td>
+			</tr>
+			<tr>
+				<td><img src="assets/part5/spheres_adaptive.png"/><figcaption>CBspheres, rendered</figcaption></td>
+				<td><img src="assets/part5/spheres_adaptive_rate.png"/><figcaption>CBspheres, sample rate</figcaption></td>
+			</tr>
+		</table>
+		<p>The ceiling (lit only by bounced light), the shadows under the bunny and spheres, and the shaded sides of the objects stay red: their variance is high, so they use most of the 2048 samples. The directly lit walls and floor turn blue after only a few batches. The final images are noise-free, and the bunny took 3 min 52 s, roughly half of what a uniform 2048 spp would have cost.</p>
 
 		<h2>(Optional) Part 6: Extra Credit Opportunities</h2>
-		Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
-		
-		<h2>Additional Notes (please remove)</h2>
+		<p>No extra credit items were implemented.</p>
+
+		<h2>Art Competition Entry (not submitted for extra credit here)</h2>
+		<figure>
+			<img src="assets/rgb_shadows.png" alt="White bear chopping a white tree under red, green and blue lights" style="width:70%"/>
+			<figcaption><i>Timber-r-r! (Nothing Here Is Colored)</i>, 800&times;800, rendered with our path tracer.</figcaption>
+		</figure>
+		<p>Every object in this scene is pure white. All the color comes from three area lights (red, green and blue) in a ring overhead. Wherever the bear or the tree blocks one light, its shadow takes the mix of the other two (cyan, magenta or yellow), and overlapping shadows split into the pure primaries. The scene was generated by a Python script that writes the COLLADA file directly (a bear made of spheres; the tree, axe and wood chips made of boxes) and was rendered with adaptive sampling up to 1024 samples per pixel, 2 light rays and max depth 5.</p>
+
+		<h2>Collaboration</h2>
+		<p>We pair programmed the whole assignment: we sat together and worked on one computer, going through the relevant lecture and discussion material for each part before implementing it, so we both understood every piece of the pipeline rather than splitting it up. It went well overall. The main friction was hardware: both of our laptops are fairly weak, so the 1024 and 2048 samples-per-pixel renders took a long time, and we learned to test at low resolution and low sample counts before starting the full batches. The most interesting part for us was seeing the theory show up directly in the images. Rendering only the 2nd and 3rd bounces made it obvious where the ceiling light and color bleeding come from, and the adaptive sampling rate images lit up exactly the regions lit by noisy indirect light. We also learned a lot from the Windows-only Part 4 bug: an image that was darker with more bounces was physically impossible, which pointed us to undefined behavior (a missing <code>return</code>) rather than a math error.</p>
+
+		<h2>Acknowledgement of AI</h2>
+		<p>We used Claude (an LLM) throughout this homework:</p>
 		<ul>
-			<li>You can also add code if you'd like as so: <code>code code code</code></li>
-			<li>If you'd like to add math equations, 
-				<ul>
-					<li>You can write inline equations like so: \( a^2 + b^2 = c^2 \)</li>
-					<li>You can write display equations like so: \[ a^2 + b^2 = c^2 \]</li>
-				</ul>
-			</li>
+			<li><b>Conceptual understanding:</b> we used it to summarize and quiz us on the lecture and discussion content, and to explain how each concept applied to the part of the project we were working on.</li>
+			<li><b>Code:</b> we generated the implementation code for Parts 1&ndash;5 with Claude Code, then read through the files to understand how the code works. Claude also wrote the build and render scripts, helped debug our Windows build (the missing FreeType dependency and the missing-return bug in Part 4), and checked our renders against the spec.</li>
+			<li><b>Write-up:</b> Claude drafted the explanations and analysis on this page from our results, which we then reviewed and edited.</li>
+			<li><b>Art competition:</b> the scene-generation script was written with Claude, and we made some tweaks to it for the final render.</li>
 		</ul>
 		</div>
 	</body>
